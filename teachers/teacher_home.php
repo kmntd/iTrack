@@ -26,6 +26,26 @@ $sectionsResult = $sectionsStmt->get_result();
 // Fetch all results as an associative array
 $sectionsArray = $sectionsResult->fetch_all(MYSQLI_ASSOC);
 
+
+// Fetch announcements
+$announcements_query = "SELECT * FROM admin_announcements ORDER BY created_at DESC";
+$announcements_stmt = $con->prepare($announcements_query);
+$announcements_stmt->execute();
+$announcements_result = $announcements_stmt->get_result();
+
+echo "<h3 class='text-xl font-semibold mb-4'>Announcements</h3>";
+if ($announcements_result->num_rows > 0) {
+    while ($announcement = $announcements_result->fetch_assoc()) {
+        echo "<div class='bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4' role='alert'>";
+        echo "<p><strong>Announcement:</strong> " . htmlspecialchars($announcement['message']) . "</p>";
+        echo "<p><small>Posted on: " . htmlspecialchars($announcement['created_at']) . "</small></p>";
+        echo "</div>";
+    }
+} else {
+    echo "<p>No announcements available.</p>";
+}
+
+
 // Display Sections
 echo "<h2>Assigned Sections</h2>";
 
