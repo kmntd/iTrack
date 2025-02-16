@@ -1,152 +1,9 @@
 <?php
-session_start();
-
-// Check if the user is logged in
-if (!isset($_SESSION['student_id'])) {
-    header("Location: student_login.php");
-    exit();
-}
-
-// Include the database connection file
 include '../fn/dbcon.php';
+?>
 
-// Fetch the student's information based on the session variable
-$student_id = $_SESSION['student_id'];
-$stmt = $con->prepare("SELECT * FROM students WHERE id = ?");
-$stmt->bind_param("i", $student_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows > 0) {
-    $student = $result->fetch_assoc();
-} else {
-    echo "<script>alert('Student not found!'); window.location.href='login.php';</script>";
-    exit();
-}
-
-// Fetch the student's section ID
-$section_query = "SELECT section_id FROM students WHERE id = ?";
-$section_stmt = $con->prepare($section_query);
-$section_stmt->bind_param("i", $student_id);
-$section_stmt->execute();
-$section_result = $section_stmt->get_result();
-$section = $section_result->fetch_assoc();
-
-// Initialize subjects variable
-$subjects_result = null;
-$subjects_count = 0;
-
-if (!empty($section['section_id'])) {
-    // Fetch subjects the student is enrolled in based on their section
-    $subjects_query = "
-        SELECT s.subject_code, s.subject_name, ts.teacher_id 
-        FROM subjects s 
-        JOIN teacher_section ts ON s.id = ts.subject_id 
-        WHERE ts.section_id = ? 
-    ";
-    $subjects_stmt = $con->prepare($subjects_query);
-    $subjects_stmt->bind_param("i", $section['section_id']);
-    $subjects_stmt->execute();
-    $subjects_result = $subjects_stmt->get_result();
-    $subjects_count = $subjects_result->num_rows;
-}
-
-// Fetch the student's grades from assignments
-$grades_query = "
-    SELECT 
-        COALESCE(SUM(sub.score), 0) AS total_assignment_score,
-        COALESCE(SUM(a.perfect_score), 0) AS total_assignment_possible_score
-    FROM 
-        submissions sub
-    JOIN 
-        assignments a ON sub.assignment_id = a.id
-    WHERE 
-        sub.student_id = ?";
-
-// Fetch quiz grades
-$quiz_query = "
-    SELECT 
-        COALESCE(SUM(qs.score), 0) AS total_quiz_score,
-        COALESCE(SUM(q.perfect_score), 0) AS total_quiz_possible_score
-    FROM 
-        quiz_submissions qs
-    JOIN 
-        quizzes q ON qs.quiz_id = q.id
-    WHERE 
-        qs.student_id = ?";
-
-// Fetch assignment grades
-$grades_stmt = $con->prepare($grades_query);
-$grades_stmt->bind_param("i", $student_id);
-$grades_stmt->execute();
-$grades_result = $grades_stmt->get_result();
-$grades = $grades_result->fetch_assoc();
-
-// Fetch quiz grades
-$quiz_stmt = $con->prepare($quiz_query);
-$quiz_stmt->bind_param("i", $student_id);
-$quiz_stmt->execute();
-$quiz_result = $quiz_stmt->get_result();
-$quiz_data = $quiz_result->fetch_assoc();
-
-// Calculate total scores
-$total_assignment_score = $grades['total_assignment_score'];
-$total_assignment_possible_score = $grades['total_assignment_possible_score'];
-
-$total_quiz_score = $quiz_data['total_quiz_score'];
-$total_quiz_possible_score = $quiz_data['total_quiz_possible_score'];
-
-// Calculate overall scores
-$total_score = $total_assignment_score + $total_quiz_score;
-$total_possible_score = $total_assignment_possible_score + $total_quiz_possible_score;
-
-// Calculate percentage
-$percentage = 0;
-if ($total_possible_score > 0) {
-    $percentage = ($total_score / $total_possible_score) * 100;
-}
-
-// Fetch the final grades per subject
-$final_grades_query = "
-    SELECT 
-        s.subject_code, 
-        s.subject_name,
-        COALESCE(SUM(sub.score), 0) AS total_assignment_score,
-        COALESCE(SUM(a.perfect_score), 0) AS total_assignment_possible_score,
-        COALESCE(SUM(qs.score), 0) AS total_quiz_score,
-        COALESCE(SUM(q.perfect_score), 0) AS total_quiz_possible_score
-    FROM 
-        subjects s
-    LEFT JOIN 
-        assignments a ON s.id = a.subject_id
-    LEFT JOIN 
-        submissions sub ON a.id = sub.assignment_id AND sub.student_id = ?
-    LEFT JOIN 
-        quizzes q ON s.id = q.subject_id
-    LEFT JOIN 
-        quiz_submissions qs ON q.id = qs.quiz_id AND qs.student_id = ?
-    WHERE 
-        s.id IN (SELECT subject_id FROM teacher_section WHERE section_id = ?)
-    GROUP BY 
-        s.id";
-
-$final_grades_stmt = $con->prepare($final_grades_query);
-$final_grades_stmt->bind_param("iii", $student_id, $student_id, $section['section_id']);
-$final_grades_stmt->execute();
-$final_grades_result = $final_grades_stmt->get_result();
-
-// Prepare data for Chart.js
-$final_grades_data = [];
-while ($row = $final_grades_result->fetch_assoc()) {
-    $total_score = $row['total_assignment_score'] + $row['total_quiz_score'];
-    $total_possible_score = $row['total_assignment_possible_score'] + $row['total_quiz_possible_score'];
-    $final_percentage = ($total_possible_score > 0) ? ($total_score / $total_possible_score) * 100 : 0;
-
-    $final_grades_data[] = [
-        'subject' => $row['subject_code'] . ' - ' . $row['subject_name'],
-        'final_grade' => number_format($final_percentage, 2)
-    ];
-}
+<?php
+include '../data/home.php';
 ?>
 
 <!DOCTYPE html>
@@ -157,51 +14,152 @@ while ($row = $final_grades_result->fetch_assoc()) {
     <title>Home - Grade Monitoring System</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            background-color: #f9fafb;
-        }
-        header {
-            text-align: center; 
-            padding: 20px;
-            background-color: #4a5568;
-            color: white;
-        }
-        main {
-            padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        .subject-box {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-            cursor: pointer;
-        }
-        /* Dark mode styles */
-        .dark {
-            background-color: #2d3748; /* Dark background */
-            color: white; /* Light text */
-        }
-        .dark .subject-box {
-            background-color: #4a5568; /* Dark subject box */
-        }
-    </style>
+    
 </head>
 <body>
-    <header>
-        <h1>Welcome to the Grade Monitoring System</h1>
-        <h2>Name: <?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?></h2>
-        <h2>Your LRN: <?php echo htmlspecialchars($student['lrn']); ?></h2>
-        <nav>
-            <a href="../fn/student_logout.php" class="text-white hover:underline">Logout</a>
+
+<div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-blue-800 text-white p-4 transform -translate-x-full transition-transform duration-300 ease-in-out md:relative md:translate-x-0 z-10">
+            <div class="flex items-center mb-4">
+                <!-- Logo -->
+                <img src="https://via.placeholder.com/40" alt="Logo" class="mr-2">
+                <h1 class="text-xl font-bold">ITrack</h1>
+            </div>
+
+            <nav>
+                <ul>
+                    <li class="mb-4">
+                        <a href="home.php" class="hover:text-blue-300">Dashboard</a>
+                    </li>
+                    <li class="mb-4">
+                        <a href="view_subjects.php" class="hover:text-blue-300">Subject</a>
+                    </li>
+                    <li class="mb-4">
+                        <a href="view_progress_report.php" class="hover:text-blue-300">Progress Report</a>
+                    </li>
+                    <li class="mb-4">
+                    <a href="view_assignments.php?section_id=<?php echo urlencode($section['section_id']); ?>" class="text-blue-500 hover:underline">View Assignments</a>
+                    </li>
+                    <li class="mb-4">
+                        <a href="view_notice.php" class="hover:text-blue-300">Notice</a>
+                    </li>
+                    <li>
+                        <a href="student_settings.php" class="hover:text-blue-300">Settings</a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+    <!-- Search Bar -->
+    <div class="flex flex-1 mx-4">
+        <input
+            type="text"
+            id="subjectSearch"
+            placeholder="Search by subject code..."
+            class="w-1/3 p-2 rounded-lg border border-blue-300"
+            aria-label="Search"
+        />
+        <button onclick="searchSubject()" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded-lg">Search</button>
+    </div>
+
+    <!-- Profile Image and Name -->
+    <div class="flex items-center">
+        <img src="<?php echo htmlspecialchars($image_path); ?>" alt="Profile" class="rounded-full mr-2 w-10 h-10">
+        <span class="hidden md:block"><?php echo htmlspecialchars($last_name); ?></span>
+    </div>
+
+    <button id="burger" class="md:hidden p-2 focus:outline-none" aria-label="Toggle sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+        </svg>
+    </button>
+</header>
+
+<!-- Custom Alert -->
+<div id="customAlert" class="hidden fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg z-50" role="alert">
+    <span id="alertMessage">This is an alert message!</span>
+    <button onclick="closeAlert()" class="ml-4 text-white focus:outline-none">
+        &times;
+    </button>
+</div>
+
+
+
+
+            <main class="flex-1 p-6 flex flex-col md:flex-row space-x-4">
+                <div class="flex-1 mb-4 md:mb-0 bg-white p-4 shadow-lg rounded-lg">
+                     <!-- First Banner -->
+                     <div class="bg-blue-500 text-white p-4 rounded-lg mb-4">
+                    <h3 class="text-xl font-bold">Welcome <?php echo htmlspecialchars($last_name . ' ' . $first_name . ' ' . $middle_name); ?></h3>
+                        <p><?php echo htmlspecialchars($lrn); ?></p>
+                        <p>Welcome to your dashboard!</p>
+                    </div>
+                     <!-- Second Banner -->
+                     <div class="bg-white text-white p-8 rounded-lg mb-4">
+                    <div class="mt-6">
+                        <canvas id="finalGradesChart"></canvas>
+                    </div>    
+                    </div>
+                </div>
+
+                <!-- Right Container -->
+                <div class="flex-initial w-full md:w-2/5 bg-white p-4 shadow-lg rounded-lg">
+                    <!-- First Banner -->
+                    <div class="bg-blue-500 text-white p-4 rounded-lg mb-4">
+                    <?php if (!empty($admin_announcements)): ?>
+    <h3 class='text-xl font-semibold mb-4'>Admin Announcements</h3>
+    <ul>
+        <?php foreach ($admin_announcements as $announcement): ?>
+            <li>
+                <strong><?php echo htmlspecialchars($announcement['created_at']); ?>:</strong>
+                <p><?php echo htmlspecialchars($announcement['message']); ?></p>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php else: ?>
+    <p>No announcements available for admins.</p>
+<?php endif; ?>
+                    </div>
+                    
+                    <div class="bg-blue-600 text-white p-8 rounded-lg mb-4">
+                        <!-- Display Teacher Announcements -->
+<?php if (!empty($announcements)): ?>
+    <h3 class='text-xl font-semibold mb-4'>Teacher Announcements</h3>
+    <ul>
+        <?php foreach ($announcements as $announcement): ?>
+            <li class="max-w-full break-words">
+                <strong><?php echo htmlspecialchars($announcement['created_at']); ?>:</strong>
+                <p class="break-words"><?php echo htmlspecialchars($announcement['message']); ?></p>
+                <p class="text-gray-100"><em>Posted by: <?php echo htmlspecialchars($announcement['teacher_name']); ?></em></p>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php else: ?>
+    <p>No announcements available for your section.</p>
+<?php endif; ?>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const burger = document.getElementById('burger');
+        const sidebar = document.getElementById('sidebar');
+
+        burger.addEventListener('click', () => {
+            sidebar.classList.toggle('-translate-x-full');
+        });
+    </script>
+
+   
+            <a href="../fn/student_logout.php" class=" hover:underline">Logout</a>
         </nav>
-        <button id="toggleDarkMode" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">
-            Toggle Dark Mode
-        </button>
-    </header>
+       
     <main>
         <h3 class="text-xl font-semibold mb-4">Your Dashboard</h3>
         
@@ -277,5 +235,60 @@ while ($row = $final_grades_result->fetch_assoc()) {
             localStorage.setItem('dark-mode', isDarkMode);
         });
     </script>
+
+<script>
+    function searchSubject() {
+        const input = document.getElementById('subjectSearch').value.trim();
+        const teacherId = 1; // Replace with the actual teacher ID if needed
+
+        // Check if input is not empty before redirecting
+        if (input.length > 0) {
+            // AJAX call to check if the subject code exists in the database
+            fetch(`check_subject.php?subject_code=${encodeURIComponent(input)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.exists) {
+                        // Redirect if the subject code exists
+                        window.location.href = `http://localhost/gms/students/subject_details.php?subject_code=${encodeURIComponent(input)}&teacher_id=${teacherId}`;
+                    } else {
+                        // Show the custom alert if the subject code does not exist
+                        showAlert(`The subject code "${input}" does not exist. Please try again.`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert("An error occurred while checking the subject code.");
+                });
+        } else {
+            // Alert if input is empty
+            showAlert("Please enter a search query.");
+        }
+    }
+
+    function showAlert(message) {
+        const alertBox = document.getElementById('customAlert');
+        const alertMessage = document.getElementById('alertMessage');
+        alertMessage.textContent = message; // Set the alert message
+        alertBox.classList.remove('hidden'); // Show the alert box
+
+        // Automatically hide the alert after 5 seconds
+        setTimeout(() => {
+            closeAlert();
+        }, 5000);
+    }
+
+    function closeAlert() {
+        const alertBox = document.getElementById('customAlert');
+        alertBox.classList.add('hidden'); // Hide the alert box
+    }
+
+    // Add event listener for "Enter" key
+    document.getElementById('subjectSearch').addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            searchSubject(); // Call search function when "Enter" is pressed
+        }
+    });
+</script>
+
 </body>
 </html>

@@ -9,7 +9,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Check if fields are not empty
     if (empty($lrn) || empty($password)) {
-        echo "<script>alert('Please fill in both fields.'); window.location.href='../students/student_login.php';</script>";
+        $_SESSION['error_message'] = 'Please fill in both fields.';
+        header("Location: ../students/student_login.php");
         exit();
     }
 
@@ -33,11 +34,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             header("Location: ../students/home.php");
             exit();
         } else {
-            echo "<script>alert('Invalid password!'); window.location.href='../students/student_login.php';</script>";
+            $_SESSION['error_message'] = 'Invalid password!';
+            header("Location: ../students/student_login.php");
             exit();
         }
     } else {
-        echo "<script>alert('No account found with that LRN!'); window.location.href='../students/student_login.php';</script>";
+        $_SESSION['error_message'] = 'No account found with that LRN!';
+        header("Location: ../students/student_login.php");
         exit();
     }
 }
