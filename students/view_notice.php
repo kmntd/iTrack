@@ -1,9 +1,73 @@
 <?php
 include '../fn/dbcon.php';
-?>
-
-<?php
 include '../data/home.php';
+
+// Check if the user is logged in
+if (!isset($_SESSION['student_id'])) {
+    header("Location: student_login.php");
+    exit();
+}
+
+// Fetch the student's information
+$student_id = $_SESSION['student_id'];
+$stmt = $con->prepare("SELECT first_name, middle_name, last_name, lrn FROM students WHERE id = ?");
+$stmt->bind_param("i", $student_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows > 0) {
+    $student = $result->fetch_assoc();
+} else {
+    echo "<script>alert('Student not found!'); window.location.href='student_login.php';</script>";
+    exit();
+}
+
+// Fetch the student's section ID
+$section_query = "SELECT section_id FROM students WHERE id = ?";
+$section_stmt = $con->prepare($section_query);
+$section_stmt->bind_param("i", $student_id);
+$section_stmt->execute();
+$section_result = $section_stmt->get_result();
+$section = $section_result->fetch_assoc();
+
+if (!$section) {
+    echo "<script>alert('Section not found!'); window.location.href='student_login.php';</script>";
+    exit();
+}
+
+$section_id = $section['section_id'];
+
+// Fetch teacher announcements
+$teacher_announcements = [];
+$teacher_announcements_query = "SELECT ta.title, ta.message, ta.created_at, 
+                                CONCAT(t.first_name, ' ', t.last_name) AS teacher_name
+                                FROM teacher_announcements ta 
+                                JOIN teachers t ON ta.teacher_id = t.id
+                                WHERE ta.section_id = ? 
+                                ORDER BY ta.created_at DESC";
+$teacher_announcements_stmt = $con->prepare($teacher_announcements_query);
+$teacher_announcements_stmt->bind_param("i", $section_id);
+$teacher_announcements_stmt->execute();
+$teacher_announcements_result = $teacher_announcements_stmt->get_result();
+
+while ($row = $teacher_announcements_result->fetch_assoc()) {
+    $row['created_at'] = date('m/d/Y h:i A', strtotime($row['created_at']));
+    $teacher_announcements[] = $row;
+}
+
+// Fetch admin announcements
+$admin_announcements = [];
+$announcements_query = "SELECT message, created_at FROM admin_announcements ORDER BY created_at DESC";
+$announcements_stmt = $con->prepare($announcements_query);
+$announcements_stmt->execute();
+$announcements_result = $announcements_stmt->get_result();
+
+while ($row = $announcements_result->fetch_assoc()) {
+    $row['created_at'] = date('m/d/Y h:i A', strtotime($row['created_at']));
+    $admin_announcements[] = $row;
+}
+
+// Other data fetching...
 ?>
 
 <!DOCTYPE html>
@@ -15,232 +79,132 @@ include '../data/home.php';
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-    #finalAverageDisplay {
-        font-weight: bold;
-        margin-top: 20px;
-        font-size: 1.5em;
-        color: #4CAF50; /* Green color */
-    }
-    
-    #gradesDisplay {
-        margin-top: 20px;
-        font-size: 1.2em;
-        color: #333;
-    }
-    
-    .grade-item {
-        padding: 5px 0;
-        border-bottom: 1px solid #ddd; /* Light gray border */
-    }
-    
-    .grade-item:last-child {
-        border-bottom: none; /* Remove border for the last item */
-    }
-    .hidden-message {
-            display: none;
+        .parent-container {
+            width: 600px; /* Set a fixed width or use max-width for responsiveness */
+            margin: 0 auto; /* Center the container */
         }
+
+        #finalAverageDisplay {
+            font-weight: bold;
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #4CAF50; /* Green color */
+        }
+        #gradesDisplay {
+            margin-top: 20px;
+            font-size: 1.2em;
+            color: #333;
+        }
+        .grade-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd; /* Light gray border */
+        }
+        .grade-item:last-child {
+            border-bottom: none; /* Remove border for the last item */
+        }
+        
+        .hidden-message {
+            display: none; /* Keep this to show/hide full messages */
+            width: 100%; /* Ensure full width within the container */
+            max-height: 200px; /* Optional: Limit height for larger messages */
+            overflow: auto; /* Enable scrolling if content exceeds max height */
+        }
+
         .message-container {
             cursor: pointer;
+            overflow: hidden; /* Prevent overflow */
+            text-overflow: ellipsis; /* Add ellipsis */
+            white-space: nowrap; /* Prevent text from wrapping */
+            width: 100%; /* Make sure it takes the full width */
         }
-</style>
+
+        .line-clamp {
+            display: -webkit-box; 
+            -webkit-box-orient: vertical; 
+            -webkit-line-clamp: 2; /* Change this number for the desired visible lines */
+            overflow: hidden;
+        }
+        /* New styles for fixed height and scrolling */
+        .parent-container {
+            max-height: 650px; /* Set your desired height */
+            overflow-y: auto; /* Enable vertical scrolling */
+        }
+    </style>
 </head>
 <body>
-
-<div class="flex h-screen">
-        <!-- Sidebar -->
-        <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-blue-800 text-white p-4 transform -translate-x-full transition-transform duration-300 ease-in-out md:relative md:translate-x-0 z-10">
-            <div class="flex items-center mb-4">
-                <!-- Logo -->
-                <img src="https://via.placeholder.com/40" alt="Logo" class="mr-2">
-                <h1 class="text-xl font-bold">ITrack</h1>
-            </div>
-
-            <nav>
-                <ul>
-                    <li class="mb-4">
-                        <a href="home.php" class="hover:text-blue-300">Dashboard</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_subjects.php" class="hover:text-blue-300">Subject</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_progress_report.php" class="hover:text-blue-300">Progress Report</a>
-                    </li>
-                    <li class="mb-4">
-                    <a href="view_assignments.php?section_id=<?php echo urlencode($section['section_id']); ?>" class="text-blue-500 hover:underline">View Assignments</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_notice.php" class="hover:text-blue-300">Notice</a>
-                    </li>
-                    <li>
-                        <a href="student_settings.php" class="hover:text-blue-300">Settings</a>
-                    </li>
-                </ul>
-            </nav>
-        </aside>
-
-        <!-- Main Content -->
-        <div class="flex-1 flex flex-col">
-        <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
-    <!-- Search Bar -->
-    <div class="flex flex-1 mx-4">
-        <input type="text" placeholder="Search..." class="flex-1 p-2 rounded-lg border border-blue-300" aria-label="Search">
-    </div>
-
-    <!-- Profile Image and Name -->
-    <div class="flex items-center">
-        <img src="<?php echo htmlspecialchars($image_path); ?>" alt="Profile" class="rounded-full mr-2 w-10 h-10"> <!-- Use the fetched image -->
-        <span class="hidden md:block"><?php echo htmlspecialchars($last_name); ?></span> 
-    </div>
-
-    <button id="burger" class="md:hidden p-2 focus:outline-none" aria-label="Toggle sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-        </svg>
-    </button>
-</header>
-
-            <main class="flex-1 p-6 flex flex-col md:flex-row space-x-4">
-                <!-- Left Container -->
-                <div class="flex-1 mb-4 md:mb-0 bg-white p-4 shadow-lg rounded-lg">
-                 
-        <div>
-        <div class="container mx-auto flex flex-wrap">
-        <!-- Left Container: Teacher Announcements -->
-        <div class="w-full md:w-1/2 p-4">
-            <h2 class="text-xl font-bold mb-4">Teacher Announcements</h2>
-            <?php foreach ($teacher_announcements as $announcement): ?>
-                <div class="bg-white p-4 mb-2 rounded shadow">
-                    <div class="message-container" onclick="toggleMessage(this)">
-                        <p class="font-semibold"><?php echo htmlspecialchars($announcement['teacher_name']); ?></p>
-                        <p><?php echo htmlspecialchars(substr($announcement['message'], 0, 100)); ?>...</p>
-                    </div>
-                    <div class="hidden-message mt-2">
-                        <p><?php echo htmlspecialchars($announcement['message']); ?></p>
-                    </div>
-                    <p class="text-gray-500 text-sm"><?php echo htmlspecialchars($announcement['created_at']); ?></p>
-                </div>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Right Container: Admin Announcements -->
-        <div class="w-full md:w-1/2 p-4">
-            <h2 class="text-xl font-bold mb-4">Admin Announcements</h2>
-            <?php foreach ($admin_announcements as $announcement): ?>
-                <div class="bg-white p-4 mb-2 rounded shadow">
-                    <p><?php echo htmlspecialchars($announcement['message']); ?></p>
-                    <p class="text-gray-500 text-sm"><?php echo htmlspecialchars($announcement['created_at']); ?></p>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <script>
-        function toggleMessage(element) {
-            const hiddenMessage = element.nextElementSibling;
-            hiddenMessage.classList.toggle('hidden-message');
-        }
-    </script>
-
-    <script>
-        const burger = document.getElementById('burger');
-        const sidebar = document.getElementById('sidebar');
-
-        burger.addEventListener('click', () => {
-            sidebar.classList.toggle('-translate-x-full');
-        });
-    </script>
-
-    <header>
-   
-        <h1>Welcome to the Grade Monitoring System</h1>
-        <h2>Name: <?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?></h2>
-        <h2>Your LRN: <?php echo htmlspecialchars($student['lrn']); ?></h2>
-        <nav>
-            <a href="../fn/student_logout.php" class="text-white hover:underline">Logout</a>
-        </nav>
-        <button id="toggleDarkMode" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">
-            Toggle Dark Mode
-        </button>
-    </header>
-    <main>
-        <h3 class="text-xl font-semibold mb-4">Your Dashboard</h3>
-        
-        <!-- Display your overall percentage -->
-        <div>
-        
-            <h4 class="text-lg font-semibold mb-2">Your Total Grade: <?php echo number_format($percentage, 2) . '%'; ?></h4>
-        </div>
-
-        
-
-        <!-- Add the Chart.js visualization -->
-        <div class="mt-6">
-            <canvas id="finalGradesChart"></canvas>
-        </div>
-    </main>
-
-    <script>
-        const finalGradesData = <?php echo json_encode($final_grades_data); ?>;
-        
-        const labels = finalGradesData.map(item => item.subject);
-        const data = finalGradesData.map(item => parseFloat(item.final_grade));
-
-        // Function to calculate the final average
-    function calculateFinalAverage(grades) {
-        const total = grades.reduce((sum, grade) => sum + grade, 0);
-        const average = total / grades.length;
-        return average;
-    }
-
-     // Function to display each subject's grade
-     function displayGrades(gradesData) {
-        const gradesDisplay = document.getElementById('gradesDisplay');
-        gradesDisplay.innerHTML = ''; // Clear previous content
-
-        gradesData.forEach(item => {
-            const gradeElement = document.createElement('div');
-            gradeElement.textContent = `${item.subject}: ${item.final_grade}%`;
-            gradesDisplay.appendChild(gradeElement);
-        });
-    }
-
-    // Calculate final average
-    const finalAverage = calculateFinalAverage(data);
+<div class="flex h-screen bg-[#0165DC]">
+    <?php include '../component/aside.php'; ?>
     
-    // Display the final average on the page
-    const averageDisplay = document.getElementById('finalAverageDisplay');
-    averageDisplay.textContent = `Final Average: ${finalAverage.toFixed(2)}%`;
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col">
+        <?php include '../component/header.php'; ?>
 
-    // Display individual grades
-    displayGrades(finalGradesData);
+        <main class="flex-1 p-6 flex flex-col md:flex-row space-x-4">
+            <div class="flex-1 mb-4 md:mb-0 bg-white p-4 shadow-lg rounded-lg parent-container">
+                <div class="container mx-auto flex flex-wrap">
+                    <!-- Left Container: Teacher Announcements -->
+                    <div class="w-full md:w-1/2 p-4">
+                        <h2 class="text-2xl font-bold text-center mb-4 text-blue-600">Teacher Announcements</h2>
 
-        const ctx = document.getElementById('finalGradesChart').getContext('2d');
-        const finalGradesChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Final Grades (%)',
-                    data: data,
-                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Percentage'
-                        }
-                    }
+                        <?php if (empty($teacher_announcements)): ?>
+                            <p class="text-gray-500 text-center">No announcements available for your section.</p>
+                        <?php else: ?>
+                            <?php foreach ($teacher_announcements as $index => $announcement): ?>
+                                <div class="bg-white p-4 mb-4 rounded-lg shadow-lg transition-transform transform hover:scale-105">
+                                    <div class="message-container" onclick="toggleMessage(<?php echo $index; ?>)">
+                                        <div class="flex items-center mb-2">
+                                            <div>
+                                                <p class="font-semibold text-blue-600"><?php echo htmlspecialchars($announcement['teacher_name'] ?? 'Unknown Teacher'); ?></p>
+                                                <p class="text-lg font-bold text-gray-800">
+                                                    <?php echo isset($announcement['title']) && !empty($announcement['title']) ? htmlspecialchars($announcement['title']) : 'No Title'; ?>
+                                                </p>
+                                                <p class="text-gray-600 line-clamp-2"><?php echo htmlspecialchars(substr($announcement['message'], 0, 100)); ?>...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="hidden-message mt-2" id="message-<?php echo $index; ?>">
+                                        <p class="whitespace-normal break-words"><?php echo htmlspecialchars($announcement['message']); ?></p>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Right Container: Admin Announcements -->
+                    <div class="w-full md:w-1/2 p-4">
+                        <h2 class="text-xl font-bold mb-4">Admin Announcements</h2>
+                        <?php foreach ($admin_announcements as $announcement): ?>
+                            <div class="bg-white p-4 mb-2 rounded shadow">
+                                <p><?php echo htmlspecialchars($announcement['message']); ?></p>
+                                <p class="text-gray-500 text-sm"><?php echo htmlspecialchars($announcement['created_at']); ?></p>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <script>
+            function toggleMessage(index) {
+                console.log(`Toggling message for index: ${index}`);
+                const messageContainer = document.getElementById(`message-${index}`);
+                if (messageContainer) {
+                    messageContainer.classList.toggle('hidden-message');
+                } else {
+                    console.error(`No element found with ID: message-${index}`);
                 }
             }
-        });
-        
-    </script>
+
+            const burger = document.getElementById('burger');
+            const sidebar = document.getElementById('sidebar');
+
+            if (burger) {
+                burger.addEventListener('click', () => {
+                    sidebar.classList.toggle('-translate-x-full');
+                });
+            }
+        </script>
+    </div>
+</div>
 </body>
 </html>

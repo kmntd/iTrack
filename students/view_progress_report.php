@@ -40,59 +40,16 @@ include '../data/home.php';
 </head>
 <body>
 
-<div class="flex h-screen">
-        <!-- Sidebar -->
-        <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-blue-800 text-white p-4 transform -translate-x-full transition-transform duration-300 ease-in-out md:relative md:translate-x-0 z-10">
-            <div class="flex items-center mb-4">
-                <!-- Logo -->
-                <img src="https://via.placeholder.com/40" alt="Logo" class="mr-2">
-                <h1 class="text-xl font-bold">ITrack</h1>
-            </div>
-
-            <nav>
-                <ul>
-                    <li class="mb-4">
-                        <a href="home.php" class="hover:text-blue-300">Dashboard</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_subjects.php" class="hover:text-blue-300">Subject</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_progress_report.php" class="hover:text-blue-300">Progress Report</a>
-                    </li>
-                    <li class="mb-4">
-                    <a href="view_assignments.php?section_id=<?php echo urlencode($section['section_id']); ?>" class="text-blue-500 hover:underline">View Assignments</a>
-                    </li>
-                    <li class="mb-4">
-                        <a href="view_notice.php" class="hover:text-blue-300">Notice</a>
-                    </li>
-                    <li>
-                        <a href="student_settings.php" class="hover:text-blue-300">Settings</a>
-                    </li>
-                </ul>
-            </nav>
-        </aside>
+<div class="flex h-screen bg-[#0165DC]">
+<?php
+include '../component/aside.php';
+?>
 
         <!-- Main Content -->
         <div class="flex-1 flex flex-col">
-        <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
-    <!-- Search Bar -->
-    <div class="flex flex-1 mx-4">
-        <input type="text" placeholder="Search..." class="flex-1 p-2 rounded-lg border border-blue-300" aria-label="Search">
-    </div>
-
-    <!-- Profile Image and Name -->
-    <div class="flex items-center">
-        <img src="<?php echo htmlspecialchars($image_path); ?>" alt="Profile" class="rounded-full mr-2 w-10 h-10"> <!-- Use the fetched image -->
-        <span class="hidden md:block"><?php echo htmlspecialchars($last_name); ?></span> 
-    </div>
-
-    <button id="burger" class="md:hidden p-2 focus:outline-none" aria-label="Toggle sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-        </svg>
-    </button>
-</header>
+        <?php
+include '../component/header.php';
+?>
 
             <main class="flex-1 p-6 flex flex-col md:flex-row space-x-4">
                 <!-- Left Container -->
