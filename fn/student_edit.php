@@ -12,17 +12,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($student_id)) {
     $confirm_password = $_POST['confirm_password'] ?? '';
     $image_file = $_FILES['image_file'] ?? null;
 
-    // Error handling
-    $errors = [];
 
-    // Password validation, only if password fields are filled
-    if (!empty($new_password) || !empty($confirm_password)) {
-        if ($new_password !== $confirm_password) {
-            $errors[] = "Passwords do not match!";
-        } else if (strlen($new_password) < 6) {
-            $errors[] = "Password must be at least 6 characters long!";
-        }
-    }
 
     // Handle image upload
     $image_path = null; // Initialize variable for the image path

@@ -369,24 +369,6 @@ while ($row = $announcements_result->fetch_assoc()) {
 }
 
 $announcements_stmt->close();
-
-// Fetch teacher announcements
-$teacher_announcements = [];
-$teacher_announcements_query = "SELECT ta.message, ta.created_at, 
-                                CONCAT(t.first_name, ' ', t.last_name) AS teacher_name
-                                FROM teacher_announcements ta 
-                                JOIN teachers t ON ta.teacher_id = t.id
-                                ORDER BY ta.created_at DESC";
-$teacher_announcements_stmt = $con->prepare($teacher_announcements_query);
-$teacher_announcements_stmt->execute();
-$teacher_announcements_result = $teacher_announcements_stmt->get_result();
-
-while ($row = $teacher_announcements_result->fetch_assoc()) {
-    $row['created_at'] = date('m/d/Y h:i A', strtotime($row['created_at']));
-    $teacher_announcements[] = $row;
-}
-
-$teacher_announcements_stmt->close();
 ?>
 
 <?php
@@ -419,3 +401,20 @@ if ($student_id) {
 ?>
 
 
+<?php 
+// Fetch subjects the student is enrolled in based on their section
+$subjects_query = "
+    SELECT s.subject_code, s.subject_name, ts.teacher_id, 
+           CONCAT(t.first_name, ' ', t.last_name) AS teacher_name 
+    FROM subjects s 
+    JOIN teacher_section ts ON s.id = ts.subject_id 
+    JOIN teachers t ON ts.teacher_id = t.id
+    WHERE ts.section_id = ? 
+";
+$subjects_stmt = $con->prepare($subjects_query);
+$subjects_stmt->bind_param("i", $section['section_id']);
+$subjects_stmt->execute();
+$subjects_result = $subjects_stmt->get_result();
+$subjects_count = $subjects_result->num_rows;
+
+?>
